@@ -1,4 +1,5 @@
-package com.example.autofish;
+
+               package com.example.autofish;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -23,6 +24,7 @@ public class AutoFishClient implements ClientModInitializer {
 
     private static int clickCooldown = 0;
     private static int recastDelay = 0;
+    private static int hookAge = 0;
 
     @Override
     public void onInitializeClient() {
@@ -48,14 +50,21 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (clickCooldown > 0) clickCooldown--;
 
+            if (client.player.fishHook != null) {
+                hookAge++;
+            } else {
+                hookAge = 0;
+            }
+
             if (recastDelay > 0) {
                 recastDelay--;
-                if (recastDelay == 0 && isHoldingRod(client)) {
+                if (recastDelay == 0 && isHoldingRod(client) && client.player.fishHook == null) {
                     rightClick(client);
+                    clickCooldown = 30;
                 }
             }
 
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 recastDelay = 25;
             }
         });
@@ -65,6 +74,8 @@ public class AutoFishClient implements ClientModInitializer {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!enabled || client.player == null || subtitle == null) return;
         if (!isHoldingRod(client) || clickCooldown > 0) return;
+        
+        if (client.player.fishHook == null || hookAge < 20) return;
 
         List<ColoredChar> chars = new ArrayList<>();
         subtitle.visit((style, asString) -> {
@@ -90,7 +101,9 @@ public class AutoFishClient implements ClientModInitializer {
 
                 if (isRed && (current.style.isBold() || isCursorSymbol(current.character))) {
                     rightClick(client);
-                    clickCooldown = 6;
+                    clickCooldown = 40;
+                    recastDelay = 25;
+                    hookAge = 0;
                     break;
                 }
             }
