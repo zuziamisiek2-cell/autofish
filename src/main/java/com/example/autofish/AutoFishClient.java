@@ -13,15 +13,12 @@ import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 public class AutoFishClient implements ClientModInitializer {
 
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
-    private static int clickCooldown = 0;
+    private static String lastPrinted = "";
 
     @Override
     public void onInitializeClient() {
@@ -45,10 +42,7 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
-            if (clickCooldown > 0) clickCooldown--;
-
-            // Automatyczne zarzucanie wędki po wyłowieniu
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
                 rightClick(client);
                 recastDelay = 40;
             }
@@ -62,40 +56,30 @@ public class AutoFishClient implements ClientModInitializer {
     public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!enabled || client.player == null || title == null) return;
-        if (!isHoldingRod(client) || clickCooldown > 0) return;
+        if (!isHoldingRod(client)) return;
 
-        String raw = title.getString();
-        if (raw == null || raw.isEmpty()) return;
-
-        AtomicBoolean shouldClick = new AtomicBoolean(false);
-
-        // Sprawdzamy kolor każdego fragmentu tekstu przesyłanego w Title
+        StringBuilder sb = new StringBuilder();
         title.visit((style, asString) -> {
             TextColor color = style.getColor();
-            if (color != null && !asString.trim().isEmpty()) {
+            if (color != null) {
                 int rgb = color.getRgb();
                 int r = (rgb >> 16) & 0xFF;
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
-
-                // Wykrywanie czerwonego wskaźnika (widocznego na Twoim screenie z minigry)
-                boolean isRed = (r > 180 && g < 90 && b < 90);
-                // Zapasowo wykrywanie czystej zieleni (gdyby pasek zmieniał kolor przy trafieniu)
-                boolean isGreen = (g > 180 && r < 90 && b < 90);
-
-                if (isRed || isGreen) {
-                    shouldClick.set(true);
-                    return Optional.of(true); // przerywamy pętlę, bo znaleźliśmy cel
-                }
+                sb.append(asString).append(String.format("[%d,%d,%d] ", r, g, b));
+            } else {
+                sb.append(asString).append("[def] ");
             }
-            return Optional.empty();
+            return java.util.Optional.empty();
         }, Style.EMPTY);
 
-        if (shouldClick.get()) {
-            rightClick(client);
-            client.player.sendMessage(Text.literal("§a[AutoFish] Trafiono w minigrze!"), true);
-            clickCooldown = 35; // Blokada na ~1.75 sekundy, żeby nie kliknąć dwa razy w tę samą rybę
-            recastDelay = 25;   // Zarzuć ponownie po złowieniu
+        String result = sb.toString().trim();
+        // Wypisujemy na czat tylko wtedy, gdy stan się zmieni (żeby nie spamować)
+        if (!result.equals(lastPrinted) && !result.isEmpty()) {
+            lastPrinted = result;
+            // Skracamy do 100 znaków żeby nie zaspamowało ekranu
+            if (result.length() > 100) result = result.substring(0, 100);
+            client.player.sendMessage(Text.literal("§e[Kolory] " + result), false);
         }
     }
 
