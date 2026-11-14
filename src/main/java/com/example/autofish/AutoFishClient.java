@@ -7,9 +7,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.FishingRodItem;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
@@ -18,7 +16,7 @@ public class AutoFishClient implements ClientModInitializer {
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
-    private static String lastLogged = "";
+    private static int clickCooldown = 0;
 
     @Override
     public void onInitializeClient() {
@@ -42,7 +40,10 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
+            if (clickCooldown > 0) clickCooldown--;
+
+            // Automatyczne zarzucanie wędki, jeśli spławik wraca do ekwipunku
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
             }
@@ -53,27 +54,18 @@ public class AutoFishClient implements ClientModInitializer {
         });
     }
 
-    public static void logIncomingText(String source, Text text) {
+    public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (!enabled || client.player == null || text == null) return;
+        if (!enabled || client.player == null || title == null) return;
+        if (!isHoldingRod(client) || clickCooldown > 0) return;
 
-        String raw = text.getString();
-        if (raw.isEmpty() || raw.contains("[AutoFish]")) return;
+        String raw = title.getString();
+        
+        // Wypisujemy czysty tekst z Title na czat, żebyś zobaczył całe zdanie/hasło minigry
+        client.player.sendMessage(Text.literal("§b[RGMC Minigra] " + raw), false);
 
-        // Zbieramy kolory znaków (żeby widzieć np. czerwony/zielony kursor w minigrze)
-        StringBuilder details = new StringBuilder();
-        text.visit((style, asString) -> {
-            TextColor color = style.getColor();
-            String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
-            details.append("[").append(asString).append(" | ").append(hex).append("] ");
-            return java.util.Optional.empty();
-        }, Style.EMPTY);
-
-        String fullLog = source + ": " + details.toString();
-        if (!fullLog.equals(lastLogged)) {
-            lastLogged = fullLog;
-            client.player.sendMessage(Text.literal("§e" + fullLog), false);
-        }
+        // TUTAJ WŁAŚNIE DODAMY KLIKNIĘCIE, JAK TYLKO ZOBACZYMY TEN TEKST NA CZACIE
+        // np. if (raw.contains("ZŁÓW") || raw.contains("...")) { rightClick(client); clickCooldown = 60; }
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
