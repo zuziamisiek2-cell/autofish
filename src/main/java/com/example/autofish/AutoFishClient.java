@@ -1,28 +1,24 @@
-
-           package com.example.autofish;
+package com.example.autofish;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.hud.BossBarHud;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.boss.BossBar;
 import net.minecraft.item.FishingRodItem;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
-
-import java.lang.reflect.Field;
-import java.util.Map;
-import java.util.UUID;
 
 public class AutoFishClient implements ClientModInitializer {
 
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
+    private static String lastLogged = "";
 
     @Override
     public void onInitializeClient() {
@@ -39,17 +35,13 @@ public class AutoFishClient implements ClientModInitializer {
                 if (client.player != null) {
                     client.player.sendMessage(
                             Text.literal("§7[AutoFish] Status: " + (enabled ? "§aWLACZONY" : "§cWYLACZONY")),
-                            true
+                            false
                     );
                 }
             }
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
-            // Sprawdzanie aktywnych BossBarów (gdzie RGMC renderuje minigrę)
-            checkBossBars(client);
-
-            // Automatyczne zarzucanie wędki, jeśli spławika nie ma w wodzie
             if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
                 rightClick(client);
                 recastDelay = 40;
@@ -61,33 +53,27 @@ public class AutoFishClient implements ClientModInitializer {
         });
     }
 
-    private void checkBossBars(MinecraftClient client) {
-        try {
-            BossBarHud bossBarHud = client.inGameHud.getBossBarHud();
-            // Pobieramy pole 'bossBars' z hud metodą refleksji, aby odczytać mapę aktywnych bossbarów
-            Field field = BossBarHud.class.getDeclaredField("bossBars");
-            field.setAccessible(true);
-            @SuppressWarnings("unchecked")
-            Map<UUID, ?> map = (Map<UUID, ?>) field.get(bossBarHud);
+    public static void logIncomingText(String source, Text text) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!enabled || client.player == null || text == null) return;
 
-            for (Object entry : map.values()) {
-                // entry to zazwyczaj ClientBossBar
-                Field nameField = entry.getClass().getDeclaredField("name");
-                nameField.setAccessible(true);
-                Text textName = (Text) nameField.get(entry);
-                if (textName != null) {
-                    String bossText = textName.getString();
-                    // Wyświetlamy treść bossbara na czacie celowniczym raz na jakiś czas lub przy zmianie
-                    // (Dla testów wypisujemy raz na 20 ticków żeby nie spamować)
-                    if (client.player.age % 20 == 0) {
-                        client.player.sendMessage(Text.literal("§b[BossBar Debug] " + bossText), false);
-                    }
+        String raw = text.getString();
+        if (raw.isEmpty() || raw.contains("[AutoFish]")) return;
 
-                    // Jeśli minigra daje sygnał do kliknięcia (np. zmiana koloru lub tekst), klikamy PPM:
-                    // if (bossText.contains("...") || ...) { rightClick(client); }
-                }
-            }
-        } catch (Exception ignored) {}
+        // Zbieramy kolory znaków (żeby widzieć np. czerwony/zielony kursor w minigrze)
+        StringBuilder details = new StringBuilder();
+        text.visit((style, asString) -> {
+            TextColor color = style.getColor();
+            String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
+            details.append("[").append(asString).append(" | ").append(hex).append("] ");
+            return java.util.Optional.empty();
+        }, Style.EMPTY);
+
+        String fullLog = source + ": " + details.toString();
+        if (!fullLog.equals(lastLogged)) {
+            lastLogged = fullLog;
+            client.player.sendMessage(Text.literal("§e" + fullLog), false);
+        }
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
