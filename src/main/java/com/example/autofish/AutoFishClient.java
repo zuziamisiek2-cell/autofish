@@ -22,6 +22,8 @@ public class AutoFishClient implements ClientModInitializer {
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
     private static int clickCooldown = 0;
+    private static String lastDebug = "";
+    private static long lastDebugTime = 0;
 
     @Override
     public void onInitializeClient() {
@@ -62,30 +64,41 @@ public class AutoFishClient implements ClientModInitializer {
     public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!enabled || client.player == null || title == null) return;
-        if (!isHoldingRod(client) || clickCooldown > 0) return;
+        if (!isHoldingRod(client)) return;
 
+        StringBuilder sb = new StringBuilder();
         AtomicBoolean shouldClick = new AtomicBoolean(false);
 
         title.visit((style, asString) -> {
             TextColor color = style.getColor();
-            if (color != null && asString.contains("+")) {
-                int rgb = color.getRgb();
-                String hex = String.format("#%06X", rgb);
+            String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
+            sb.append(asString).append("(").append(hex).append(") ");
 
-                // Szukamy dokładnie czerwonego wskaźnika (#FF5858), niezależnie na którym plusie się znajduje!
-                if (hex.equalsIgnoreCase("#FF5858")) {
+            // Jeśli to plus "+" i jego kolor jest INNY niż tło (#96D0FF) oraz INNY niż wędka (#2052FF)
+            if (asString.contains("+") && color != null) {
+                if (!hex.equalsIgnoreCase("#96D0FF") && !hex.equalsIgnoreCase("#2052FF")) {
                     shouldClick.set(true);
-                    return Optional.of(true);
                 }
             }
             return Optional.empty();
         }, Style.EMPTY);
 
-        if (shouldClick.get()) {
+        // Zawsze pokazujemy na czacie co mod aktualnie widzi
+        String currentDebug = sb.toString();
+        long now = System.currentTimeMillis();
+        if (!currentDebug.equals(lastDebug) && (now - lastDebugTime > 400) && !currentDebug.isEmpty()) {
+            lastDebug = currentDebug;
+            lastDebugTime = now;
+            if (currentDebug.length() > 100) currentDebug = currentDebug.substring(0, 100);
+            client.player.sendMessage(Text.literal("§e[AutoFish Debug] " + currentDebug), false);
+        }
+
+        // Jeśli wykryto zmianę koloru na jakimkolwiek plusie -> KLIK!
+        if (shouldClick.get() && clickCooldown == 0) {
             rightClick(client);
-            client.player.sendMessage(Text.literal("§a[AutoFish] Wyłapano moment minigry!"), true);
-            clickCooldown = 50; // Blokada na 2.5 sekundy po kliknięciu
-            recastDelay = 30;   // Ponowne zarzucanie
+            client.player.sendMessage(Text.literal("§a[AutoFish] WYŁAPANO MINIGRĘ I KLIKNIĘTO!"), false);
+            clickCooldown = 50; 
+            recastDelay = 30;
         }
     }
 
