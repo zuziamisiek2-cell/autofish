@@ -3,6 +3,7 @@ package com.example.autofish;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -35,6 +36,12 @@ public class AutoFishClient implements ClientModInitializer {
                 "category.autofishcustom"
         ));
 
+        // Nasłuch wiadomości na czacie i petycji serwerowych przechodzących przez klienta
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            processTextContent(message);
+            return true;
+        });
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (toggleKey.wasPressed()) {
                 enabled = !enabled;
@@ -61,13 +68,15 @@ public class AutoFishClient implements ClientModInitializer {
         });
     }
 
-    public static void processTitle(Text title) {
+    // Uniwersalna metoda analizująca każdy tekst z gry (HUD / Tytuły / Pasywne wiadomości)
+    public static void processTextContent(Text text) {
+        if (text == null) return;
         MinecraftClient client = MinecraftClient.getInstance();
-        if (title == null || client.inGameHud == null) return;
+        if (client.inGameHud == null) return;
 
         List<String> plusColors = new ArrayList<>();
 
-        title.visit((style, asString) -> {
+        text.visit((style, asString) -> {
             if (asString.contains("+")) {
                 TextColor color = style.getColor();
                 String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
@@ -76,9 +85,10 @@ public class AutoFishClient implements ClientModInitializer {
             return Optional.empty();
         }, Style.EMPTY);
 
+        // Jeśli nie ma plusów, to nie jest nasza minigra
         if (plusColors.isEmpty()) return;
 
-        // Szukamy indeksu, na którym znajduje się czerwony wskaźnik #FF5858
+        // Szukamy indeksu czerwonego wskaźnika #FF5858
         int redIndex = -1;
         for (int i = 0; i < plusColors.size(); i++) {
             if (plusColors.get(i).equalsIgnoreCase("#FF5858")) {
@@ -87,22 +97,21 @@ public class AutoFishClient implements ClientModInitializer {
             }
         }
 
-        // Wypisujemy na czat w sposób w 100% niezawodny
-        String debugStr = "Czerwony indeks: " + (redIndex != -1 ? redIndex : "brak");
+        // Diagnostyka na czacie (ograniczona czasowo, żeby nie zaspamować)
+        String debugStr = "Wykryto pasek! Czerwony indeks: " + (redIndex != -1 ? redIndex : "brak");
         long now = System.currentTimeMillis();
-        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 300)) {
+        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 250)) {
             lastDebug = debugStr;
             lastDebugTime = now;
-            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish] " + debugStr + " | Pasek: " + plusColors));
+            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish Packet] " + debugStr + " | Kolory: " + plusColors));
         }
 
-        // Gdy czerwony wskaźnik dojdzie do środka paska (np. indeks 4 lub 5), klikamy!
+        // Warunek kliknięcia (indeks 4 – zmienimy, jeśli na czacie wyjdzie inny)
         if (enabled && client.player != null && isHoldingRod(client) && clickCooldown == 0 && redIndex != -1) {
-            // Indeks 4 to zazwyczaj środek 10-elementowego paska. Możesz to łatwo podglądnąć na czacie.
             if (redIndex == 4) {
                 rightClick(client);
                 client.inGameHud.getChatHud().addMessage(Text.literal("§a[AutoFish] Trafiono w cel! Kliknięto PPM."));
-                clickCooldown = 60; // Blokada przed wielokrotnym kliknięciem w tej samej minigrze
+                clickCooldown = 60;
                 recastDelay = 30;
             }
         }
