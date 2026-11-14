@@ -42,7 +42,6 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (clickCooldown > 0) clickCooldown--;
 
-            // Automatyczne zarzucanie wędki, jeśli spławik wraca do ekwipunku
             if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
@@ -60,12 +59,9 @@ public class AutoFishClient implements ClientModInitializer {
         if (!isHoldingRod(client) || clickCooldown > 0) return;
 
         String raw = title.getString();
-        
-        // Wypisujemy czysty tekst z Title na czat, żebyś zobaczył całe zdanie/hasło minigry
-        client.player.sendMessage(Text.literal("§b[RGMC Minigra] " + raw), false);
-
-        // TUTAJ WŁAŚNIE DODAMY KLIKNIĘCIE, JAK TYLKO ZOBACZYMY TEN TEKST NA CZACIE
-        // np. if (raw.contains("ZŁÓW") || raw.contains("...")) { rightClick(client); clickCooldown = 60; }
+        if (raw != null && !raw.isEmpty()) {
+            client.player.sendMessage(Text.literal("§b[RGMC Minigra] " + raw), false);
+        }
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
