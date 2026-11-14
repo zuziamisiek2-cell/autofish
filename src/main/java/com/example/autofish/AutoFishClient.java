@@ -13,8 +13,9 @@ import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AutoFishClient implements ClientModInitializer {
 
@@ -66,40 +67,47 @@ public class AutoFishClient implements ClientModInitializer {
         if (!enabled || client.player == null || title == null) return;
         if (!isHoldingRod(client)) return;
 
-        StringBuilder sb = new StringBuilder();
-        AtomicBoolean shouldClick = new AtomicBoolean(false);
+        List<String> plusColors = new ArrayList<>();
 
         title.visit((style, asString) -> {
-            TextColor color = style.getColor();
-            String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
-            sb.append(asString).append("(").append(hex).append(") ");
-
-            // Jeśli to plus "+" i jego kolor jest INNY niż tło (#96D0FF) oraz INNY niż wędka (#2052FF)
-            if (asString.contains("+") && color != null) {
-                if (!hex.equalsIgnoreCase("#96D0FF") && !hex.equalsIgnoreCase("#2052FF")) {
-                    shouldClick.set(true);
-                }
+            if (asString.contains("+")) {
+                TextColor color = style.getColor();
+                String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
+                plusColors.add(hex);
             }
             return Optional.empty();
         }, Style.EMPTY);
 
-        // Zawsze pokazujemy na czacie co mod aktualnie widzi
-        String currentDebug = sb.toString();
-        long now = System.currentTimeMillis();
-        if (!currentDebug.equals(lastDebug) && (now - lastDebugTime > 400) && !currentDebug.isEmpty()) {
-            lastDebug = currentDebug;
-            lastDebugTime = now;
-            if (currentDebug.length() > 100) currentDebug = currentDebug.substring(0, 100);
-            client.player.sendMessage(Text.literal("§e[AutoFish Debug] " + currentDebug), false);
+        if (plusColors.isEmpty()) return;
+
+        // Szukamy, na którym indeksie znajduje się czerwony wskaźnik #FF5858
+        int redIndex = -1;
+        for (int i = 0; i < plusColors.size(); i++) {
+            if (plusColors.get(i).equalsIgnoreCase("#FF5858")) {
+                redIndex = i;
+                break;
+            }
         }
 
-        // Jeśli wykryto zmianę koloru na jakimkolwiek plusie -> KLIK!
-        if (shouldClick.get() && clickCooldown == 0) {
+        // Pokazujemy stan na czacie co 0.4 sekundy
+        String debugStr = "Pozycja czerwonego: " + (redIndex != -1 ? "Indeks " + redIndex : "brak");
+        long now = System.currentTimeMillis();
+        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 400)) {
+            lastDebug = debugStr;
+            lastDebugTime = now;
+            client.player.sendMessage(Text.literal("§e[AutoFish Indeks] " + debugStr + " | Wszystkie: " + plusColors), false);
+        }
+
+        // TUTAJ USTALIMY INDEKS DO KLIKNIĘCIA (np. gdy czerwony dojdzie do środka, np. indeks 4 lub 5)
+        // Na razie testujemy i sprawdzamy na czacie, który indeks oznacza wygraną!
+        /*
+        if (redIndex == 4 && clickCooldown == 0) {
             rightClick(client);
-            client.player.sendMessage(Text.literal("§a[AutoFish] WYŁAPANO MINIGRĘ I KLIKNIĘTO!"), false);
-            clickCooldown = 50; 
+            client.player.sendMessage(Text.literal("§a[AutoFish] Kliknięto na indeksie 4!"), false);
+            clickCooldown = 50;
             recastDelay = 30;
         }
+        */
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
