@@ -3,7 +3,6 @@ package com.example.autofish;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -36,12 +35,6 @@ public class AutoFishClient implements ClientModInitializer {
                 "category.autofishcustom"
         ));
 
-        // Nasłuch wiadomości na czacie i petycji serwerowych przechodzących przez klienta
-        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-            processTextContent(message);
-            return true;
-        });
-
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (toggleKey.wasPressed()) {
                 enabled = !enabled;
@@ -68,15 +61,13 @@ public class AutoFishClient implements ClientModInitializer {
         });
     }
 
-    // Uniwersalna metoda analizująca każdy tekst z gry (HUD / Tytuły / Pasywne wiadomości)
-    public static void processTextContent(Text text) {
-        if (text == null) return;
+    public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client.inGameHud == null) return;
+        if (title == null || client.inGameHud == null) return;
 
         List<String> plusColors = new ArrayList<>();
 
-        text.visit((style, asString) -> {
+        title.visit((style, asString) -> {
             if (asString.contains("+")) {
                 TextColor color = style.getColor();
                 String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
@@ -85,10 +76,8 @@ public class AutoFishClient implements ClientModInitializer {
             return Optional.empty();
         }, Style.EMPTY);
 
-        // Jeśli nie ma plusów, to nie jest nasza minigra
         if (plusColors.isEmpty()) return;
 
-        // Szukamy indeksu czerwonego wskaźnika #FF5858
         int redIndex = -1;
         for (int i = 0; i < plusColors.size(); i++) {
             if (plusColors.get(i).equalsIgnoreCase("#FF5858")) {
@@ -97,16 +86,14 @@ public class AutoFishClient implements ClientModInitializer {
             }
         }
 
-        // Diagnostyka na czacie (ograniczona czasowo, żeby nie zaspamować)
-        String debugStr = "Wykryto pasek! Czerwony indeks: " + (redIndex != -1 ? redIndex : "brak");
+        String debugStr = "Czerwony indeks: " + (redIndex != -1 ? redIndex : "brak");
         long now = System.currentTimeMillis();
-        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 250)) {
+        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 300)) {
             lastDebug = debugStr;
             lastDebugTime = now;
-            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish Packet] " + debugStr + " | Kolory: " + plusColors));
+            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish] " + debugStr + " | Pasek: " + plusColors));
         }
 
-        // Warunek kliknięcia (indeks 4 – zmienimy, jeśli na czacie wyjdzie inny)
         if (enabled && client.player != null && isHoldingRod(client) && clickCooldown == 0 && redIndex != -1) {
             if (redIndex == 4) {
                 rightClick(client);
