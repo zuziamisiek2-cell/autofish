@@ -1,6 +1,5 @@
 
-
-      package com.example.autofish;
+            package com.example.autofish;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
