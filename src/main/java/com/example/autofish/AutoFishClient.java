@@ -49,7 +49,6 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (clickCooldown > 0) clickCooldown--;
 
-            // Automatyczne zarzucanie wędki po wyłowieniu
             if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
@@ -61,13 +60,14 @@ public class AutoFishClient implements ClientModInitializer {
         });
     }
 
-    public static void processTitle(Text title) {
+    public static void processPacketText(Text text, String packetType) {
+        if (text == null) return;
         MinecraftClient client = MinecraftClient.getInstance();
-        if (title == null || client.inGameHud == null) return;
+        if (client.inGameHud == null) return;
 
         List<String> plusColors = new ArrayList<>();
 
-        title.visit((style, asString) -> {
+        text.visit((style, asString) -> {
             if (asString.contains("+")) {
                 TextColor color = style.getColor();
                 String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
@@ -78,26 +78,26 @@ public class AutoFishClient implements ClientModInitializer {
 
         if (plusColors.isEmpty()) return;
 
-        int redIndex = -1;
+        int indicatorIndex = -1;
         for (int i = 0; i < plusColors.size(); i++) {
-            if (plusColors.get(i).equalsIgnoreCase("#FF5858")) {
-                redIndex = i;
+            if (!plusColors.get(i).equalsIgnoreCase("#96D0FF")) {
+                indicatorIndex = i;
                 break;
             }
         }
 
-        String debugStr = "Czerwony indeks: " + (redIndex != -1 ? redIndex : "brak");
+        String debugStr = "[" + packetType + "] Indeks: " + (indicatorIndex != -1 ? indicatorIndex : "brak");
         long now = System.currentTimeMillis();
-        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 300)) {
+        if (!debugStr.equals(lastDebug) && (now - lastDebugTime > 250)) {
             lastDebug = debugStr;
             lastDebugTime = now;
-            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish] " + debugStr + " | Pasek: " + plusColors));
+            client.inGameHud.getChatHud().addMessage(Text.literal("§e[AutoFish Packet] " + debugStr + " | Pasek: " + plusColors));
         }
 
-        if (enabled && client.player != null && isHoldingRod(client) && clickCooldown == 0 && redIndex != -1) {
-            if (redIndex == 4) {
+        if (enabled && client.player != null && isHoldingRod(client) && clickCooldown == 0 && indicatorIndex != -1) {
+            if (indicatorIndex == 4) {
                 rightClick(client);
-                client.inGameHud.getChatHud().addMessage(Text.literal("§a[AutoFish] Trafiono w cel! Kliknięto PPM."));
+                client.inGameHud.getChatHud().addMessage(Text.literal("§a[AutoFish] Trafiono w cel z pakietu! Kliknięto PPM."));
                 clickCooldown = 60;
                 recastDelay = 30;
             }
