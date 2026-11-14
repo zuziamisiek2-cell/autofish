@@ -10,14 +10,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(InGameHud.class)
 public class InGameHudMixin {
-
     @Inject(method = "setSubtitle", at = @At("HEAD"))
     private void onSetSubtitle(Text subtitle, CallbackInfo ci) {
         AutoFishClient.processSubtitle(subtitle);
-    }
-
-    @Inject(method = "setTitle", at = @At("HEAD"))
-    private void onSetTitle(Text title, CallbackInfo ci) {
-        AutoFishClient.processSubtitle(title);
     }
 }
