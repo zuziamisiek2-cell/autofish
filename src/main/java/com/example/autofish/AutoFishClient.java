@@ -13,12 +13,15 @@ import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class AutoFishClient implements ClientModInitializer {
 
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
-    private static String lastPrinted = "";
+    private static int clickCooldown = 0;
 
     @Override
     public void onInitializeClient() {
@@ -42,7 +45,10 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
+            if (clickCooldown > 0) clickCooldown--;
+
+            // Automatyczne zarzucanie wędki po wyłowieniu
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
             }
@@ -56,30 +62,35 @@ public class AutoFishClient implements ClientModInitializer {
     public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!enabled || client.player == null || title == null) return;
-        if (!isHoldingRod(client)) return;
+        if (!isHoldingRod(client) || clickCooldown > 0) return;
 
-        StringBuilder sb = new StringBuilder();
+        AtomicBoolean shouldClick = new AtomicBoolean(false);
+
         title.visit((style, asString) -> {
             TextColor color = style.getColor();
-            if (color != null) {
+            if (color != null && asString.contains("+")) {
                 int rgb = color.getRgb();
                 int r = (rgb >> 16) & 0xFF;
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
-                sb.append(asString).append(String.format("[%d,%d,%d] ", r, g, b));
-            } else {
-                sb.append(asString).append("[def] ");
+
+                // Standardowe tło plusa to [150, 208, 255]. 
+                // Jeśli kolor jakiegoś plusa znacząco odbiega od tła (np. inny odcień, jaskrawy, czerwony lub zielony), to jest to wskaźnik!
+                boolean isStandardBackground = (r == 150 && g == 208 && b == 255) || (r == 32 && g == 82 && b == 255);
+                
+                if (!isStandardBackground) {
+                    shouldClick.set(true);
+                    return Optional.of(true);
+                }
             }
-            return java.util.Optional.empty();
+            return Optional.empty();
         }, Style.EMPTY);
 
-        String result = sb.toString().trim();
-        // Wypisujemy na czat tylko wtedy, gdy stan się zmieni (żeby nie spamować)
-        if (!result.equals(lastPrinted) && !result.isEmpty()) {
-            lastPrinted = result;
-            // Skracamy do 100 znaków żeby nie zaspamowało ekranu
-            if (result.length() > 100) result = result.substring(0, 100);
-            client.player.sendMessage(Text.literal("§e[Kolory] " + result), false);
+        if (shouldClick.get()) {
+            rightClick(client);
+            client.player.sendMessage(Text.literal("§a[AutoFish] Złapano moment minigry!"), true);
+            clickCooldown = 40; // Blokada na 2 sekundy po kliknięciu
+            recastDelay = 25;
         }
     }
 
