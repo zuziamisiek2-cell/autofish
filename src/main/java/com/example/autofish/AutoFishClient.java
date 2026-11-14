@@ -1,5 +1,5 @@
 
-            package com.example.autofish;
+           package com.example.autofish;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -8,21 +8,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.FishingRodItem;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class AutoFishClient implements ClientModInitializer {
 
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
-
-    private static int clickCooldown = 0;
     private static int recastDelay = 0;
 
     @Override
@@ -47,60 +40,30 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
-            if (clickCooldown > 0) clickCooldown--;
+            // Automatyczne zarzucanie wędki, jeśli spławika nie ma w wodzie
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
+                rightClick(client);
+                recastDelay = 40; // Odczekaj 2 sekundy przed kolejnym rzutem
+            }
 
             if (recastDelay > 0) {
                 recastDelay--;
-                if (recastDelay == 0 && isHoldingRod(client) && client.player.fishHook == null) {
-                    rightClick(client);
-                }
-            }
-
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
-                recastDelay = 20;
             }
         });
     }
 
-    public static void processSubtitle(Text subtitle) {
+    // Ta funkcja przechwytuje tekst wysyłany na pasek akcji (Action Bar) nad ekwipunkiem
+    public static void processActionBar(Text text) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (!enabled || client.player == null || subtitle == null) return;
-        if (!isHoldingRod(client) || clickCooldown > 0) return;
+        if (!enabled || client.player == null || text == null) return;
 
-        List<ColoredChar> chars = new ArrayList<>();
-        subtitle.visit((style, asString) -> {
-            for (int i = 0; i < asString.length(); i++) {
-                chars.add(new ColoredChar(asString.charAt(i), style));
-            }
-            return java.util.Optional.empty();
-        }, Style.EMPTY);
+        String message = text.getString();
+        
+        // Wyświetlamy na czacie to, co wysyła serwer, żebyś widział, co plugin "widzi"
+        client.player.sendMessage(Text.literal("§e[Debug RGMC] " + message), false);
 
-        if (chars.isEmpty()) return;
-
-        for (int i = 0; i < chars.size(); i++) {
-            ColoredChar current = chars.get(i);
-            TextColor color = current.style.getColor();
-
-            if (color != null) {
-                int rgb = color.getRgb();
-                int r = (rgb >> 16) & 0xFF;
-                int g = (rgb >> 8) & 0xFF;
-                int b = rgb & 0xFF;
-
-                boolean isRed = (r > 190 && g < 85 && b < 85);
-
-                if (isRed && (current.style.isBold() || isCursorSymbol(current.character))) {
-                    rightClick(client);
-                    clickCooldown = 40; 
-                    recastDelay = 25;   
-                    break;
-                }
-            }
-        }
-    }
-
-    private static boolean isCursorSymbol(char c) {
-        return c != '●' && c != '•' && c != ' ' && c != '[' && c != ']';
+        // Tutaj wstawimy automatyczne kliknięcie, gdy odkryjemy, jaki tekst wysyła serwer RGMC
+        // np. if (message.contains("Kliknij") || message.contains("Złów")) { rightClick(client); }
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
@@ -116,6 +79,4 @@ public class AutoFishClient implements ClientModInitializer {
         client.interactionManager.interactItem(client.player, hand);
         client.player.swingHand(hand);
     }
-
-    private record ColoredChar(char character, Style style) {}
 }
