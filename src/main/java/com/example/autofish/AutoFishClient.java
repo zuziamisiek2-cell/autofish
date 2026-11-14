@@ -1,4 +1,6 @@
-package com.example.autofish;
+
+
+      package com.example.autofish;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -6,11 +8,15 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.projectile.FishingBobberEntity;
 import net.minecraft.item.FishingRodItem;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class AutoFishClient implements ClientModInitializer {
 
@@ -19,7 +25,6 @@ public class AutoFishClient implements ClientModInitializer {
 
     private static int clickCooldown = 0;
     private static int recastDelay = 0;
-    private static int hookWaitTicks = 0;
 
     @Override
     public void onInitializeClient() {
@@ -45,37 +50,58 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (clickCooldown > 0) clickCooldown--;
 
-            FishingBobberEntity bobber = client.player.fishHook;
-
-            if (bobber != null) {
-                hookWaitTicks++;
-                
-                // Ignorujemy pierwsze 1.5 sekundy po zarzuceniu, żeby nie reagować na plusk przy rzucie
-                if (hookWaitTicks > 30 && clickCooldown == 0) {
-                    // Kiedy ryba bierze, spławik opada gwałtownie w dół (prędkość Y mocno spada)
-                    if (bobber.getVelocity().y < -0.06) {
-                        rightClick(client);
-                        clickCooldown = 40; 
-                        recastDelay = 25;   
-                        hookWaitTicks = 0;
-                    }
-                }
-            } else {
-                hookWaitTicks = 0;
-            }
-
             if (recastDelay > 0) {
                 recastDelay--;
-                if (recastDelay == 0 && isHoldingRod(client) && client.player.fishHook == null && clickCooldown == 0) {
+                if (recastDelay == 0 && isHoldingRod(client) && client.player.fishHook == null) {
                     rightClick(client);
-                    clickCooldown = 30;
                 }
             }
 
             if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
-                recastDelay = 15;
+                recastDelay = 20;
             }
         });
+    }
+
+    public static void processSubtitle(Text subtitle) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!enabled || client.player == null || subtitle == null) return;
+        if (!isHoldingRod(client) || clickCooldown > 0) return;
+
+        List<ColoredChar> chars = new ArrayList<>();
+        subtitle.visit((style, asString) -> {
+            for (int i = 0; i < asString.length(); i++) {
+                chars.add(new ColoredChar(asString.charAt(i), style));
+            }
+            return java.util.Optional.empty();
+        }, Style.EMPTY);
+
+        if (chars.isEmpty()) return;
+
+        for (int i = 0; i < chars.size(); i++) {
+            ColoredChar current = chars.get(i);
+            TextColor color = current.style.getColor();
+
+            if (color != null) {
+                int rgb = color.getRgb();
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+
+                boolean isRed = (r > 190 && g < 85 && b < 85);
+
+                if (isRed && (current.style.isBold() || isCursorSymbol(current.character))) {
+                    rightClick(client);
+                    clickCooldown = 40; 
+                    recastDelay = 25;   
+                    break;
+                }
+            }
+        }
+    }
+
+    private static boolean isCursorSymbol(char c) {
+        return c != '●' && c != '•' && c != ' ' && c != '[' && c != ']';
     }
 
     private static boolean isHoldingRod(MinecraftClient client) {
@@ -91,4 +117,6 @@ public class AutoFishClient implements ClientModInitializer {
         client.interactionManager.interactItem(client.player, hand);
         client.player.swingHand(hand);
     }
+
+    private record ColoredChar(char character, Style style) {}
 }
