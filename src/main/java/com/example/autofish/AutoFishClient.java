@@ -7,9 +7,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.FishingRodItem;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AutoFishClient implements ClientModInitializer {
 
@@ -42,6 +47,7 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (clickCooldown > 0) clickCooldown--;
 
+            // Automatyczne zarzucanie wędki po wyłowieniu
             if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
@@ -59,8 +65,37 @@ public class AutoFishClient implements ClientModInitializer {
         if (!isHoldingRod(client) || clickCooldown > 0) return;
 
         String raw = title.getString();
-        if (raw != null && !raw.isEmpty()) {
-            client.player.sendMessage(Text.literal("§b[RGMC Minigra] " + raw), false);
+        if (raw == null || raw.isEmpty()) return;
+
+        AtomicBoolean shouldClick = new AtomicBoolean(false);
+
+        // Sprawdzamy kolor każdego fragmentu tekstu przesyłanego w Title
+        title.visit((style, asString) -> {
+            TextColor color = style.getColor();
+            if (color != null && !asString.trim().isEmpty()) {
+                int rgb = color.getRgb();
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+
+                // Wykrywanie czerwonego wskaźnika (widocznego na Twoim screenie z minigry)
+                boolean isRed = (r > 180 && g < 90 && b < 90);
+                // Zapasowo wykrywanie czystej zieleni (gdyby pasek zmieniał kolor przy trafieniu)
+                boolean isGreen = (g > 180 && r < 90 && b < 90);
+
+                if (isRed || isGreen) {
+                    shouldClick.set(true);
+                    return Optional.of(true); // przerywamy pętlę, bo znaleźliśmy cel
+                }
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+
+        if (shouldClick.get()) {
+            rightClick(client);
+            client.player.sendMessage(Text.literal("§a[AutoFish] Trafiono w minigrze!"), true);
+            clickCooldown = 35; // Blokada na ~1.75 sekundy, żeby nie kliknąć dwa razy w tę samą rybę
+            recastDelay = 25;   // Zarzuć ponownie po złowieniu
         }
     }
 
