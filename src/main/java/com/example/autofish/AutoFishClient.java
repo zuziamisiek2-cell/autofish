@@ -13,13 +13,15 @@ import net.minecraft.text.TextColor;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class AutoFishClient implements ClientModInitializer {
 
     public static boolean enabled = false;
     private static KeyBinding toggleKey;
     private static int recastDelay = 0;
-    private static String lastDebug = "";
-    private static long lastDebugTime = 0;
+    private static int clickCooldown = 0;
 
     @Override
     public void onInitializeClient() {
@@ -43,8 +45,10 @@ public class AutoFishClient implements ClientModInitializer {
 
             if (!enabled || client.player == null || client.interactionManager == null) return;
 
+            if (clickCooldown > 0) clickCooldown--;
+
             // Automatyczne zarzucanie wędki po wyłowieniu
-            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0) {
+            if (isHoldingRod(client) && client.player.fishHook == null && recastDelay == 0 && clickCooldown == 0) {
                 rightClick(client);
                 recastDelay = 40;
             }
@@ -58,25 +62,30 @@ public class AutoFishClient implements ClientModInitializer {
     public static void processTitle(Text title) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!enabled || client.player == null || title == null) return;
-        if (!isHoldingRod(client)) return;
+        if (!isHoldingRod(client) || clickCooldown > 0) return;
 
-        StringBuilder sb = new StringBuilder();
+        AtomicBoolean shouldClick = new AtomicBoolean(false);
+
         title.visit((style, asString) -> {
             TextColor color = style.getColor();
-            String hex = (color != null) ? String.format("#%06X", color.getRgb()) : "brak";
-            sb.append(asString).append("(").append(hex).append(") ");
-            return java.util.Optional.empty();
+            if (color != null && asString.contains("+")) {
+                int rgb = color.getRgb();
+                String hex = String.format("#%06X", rgb);
+
+                // Szukamy dokładnie czerwonego wskaźnika (#FF5858), niezależnie na którym plusie się znajduje!
+                if (hex.equalsIgnoreCase("#FF5858")) {
+                    shouldClick.set(true);
+                    return Optional.of(true);
+                }
+            }
+            return Optional.empty();
         }, Style.EMPTY);
 
-        String currentDebug = sb.toString();
-        long now = System.currentTimeMillis();
-        
-        // Wypisujemy na czat stan paska co 0.5 sekundy, jeśli uległ zmianie
-        if (!currentDebug.equals(lastDebug) && (now - lastDebugTime > 500)) {
-            lastDebug = currentDebug;
-            lastDebugTime = now;
-            if (currentDebug.length() > 110) currentDebug = currentDebug.substring(0, 110);
-            client.player.sendMessage(Text.literal("§e[Analiza HEX] " + currentDebug), false);
+        if (shouldClick.get()) {
+            rightClick(client);
+            client.player.sendMessage(Text.literal("§a[AutoFish] Wyłapano moment minigry!"), true);
+            clickCooldown = 50; // Blokada na 2.5 sekundy po kliknięciu
+            recastDelay = 30;   // Ponowne zarzucanie
         }
     }
 
